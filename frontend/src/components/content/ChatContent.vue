@@ -31,132 +31,107 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick } from "vue";
-import { useStore } from "vuex";
 
 interface Message {
-  id?: string;
   ip?: string;
   content: string;
   timestamp: string;
   isOwn?: boolean;
 }
 
-const store = useStore();
-const ws = ref<WebSocket | null>(null);
 const messages = ref<Message[]>([]);
 const newMessage = ref("");
 const isConnected = ref(false);
+const ws = ref<WebSocket | null>(null);
 const messagesContainer = ref<HTMLElement | null>(null);
-const clientId = ref("");
+const myIp = ref<string>("");
 
-const formatTime = (timestamp: string): string => {
-  return new Date(timestamp).toLocaleTimeString();
-};
+const formatTime = (timestamp: string): string => new Date(timestamp).toLocaleTimeString();
 
-const scrollToBottom = async (): Promise<void> => {
+const scrollToBottom = async () => {
   await nextTick();
-  if (messagesContainer.value) {
-    messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
-  }
+  messagesContainer.value!.scrollTop = messagesContainer.value!.scrollHeight;
 };
 
-const sendMessage = (): void => {
+const sendMessage = () => {
   if (!newMessage.value.trim() || !isConnected.value || !ws.value) return;
 
   const message = {
+    type: "chat",
     content: newMessage.value,
     timestamp: new Date().toISOString(),
-    isOwn: true,
+    user: myIp.value || "익명",
   };
 
-  try {
-    ws.value.send(JSON.stringify(message));
-    // 서버에서 브로드캐스트된 메시지를 받을 때만 messages 배열에 추가하므로
-    // 여기서는 메시지를 추가하지 않습니다.
-    newMessage.value = "";
-  } catch (error) {
-    console.error("메시지 전송 실패:", error);
-  }
+  ws.value.send(JSON.stringify(message));
+  newMessage.value = "";
 };
 
 const connectWebSocket = () => {
-  try {
-    const wsUrl = `${import.meta.env.VITE_WS_URL || 'ws://localhost:8080'}/chat`;
-    console.log("WebSocket 연결 시도:", wsUrl);
+  const wsUrl = process.env.VUE_APP_WS_URL + "/ws/chat";
+  console.log("WebSocket 연결 시도:", wsUrl);
 
-    ws.value = new WebSocket(wsUrl);
+  ws.value = new WebSocket(wsUrl);
 
-    ws.value.onopen = () => {
-      isConnected.value = true;
-      console.log("WebSocket 연결됨");
+  ws.value.onopen = () => {
+    isConnected.value = true;
+    console.log("WebSocket 연결됨");
 
-      messages.value.push({
-        content: "채팅 서버에 연결되었습니다.",
-        timestamp: new Date().toISOString(),
-        isOwn: false,
-      });
-    };
+    messages.value.push({
+      content: "채팅 서버에 연결되었습니다.",
+      timestamp: new Date().toISOString(),
+      isOwn: false,
+    });
+  };
 
-    ws.value.onmessage = (event) => {
-      const message = JSON.parse(event.data);
-      messages.value.push({
-        ...message,
-        isOwn: message.clientId === clientId.value,
-        ip: message.ip || `User-${message.clientId?.substring(0, 4) || "Unknown"}`
-      });
-      scrollToBottom();
-    };
+  ws.value.onmessage = (event) => {
+    const message = JSON.parse(event.data);
 
-    ws.value.onclose = (event) => {
-      isConnected.value = false;
-      console.log("WebSocket 연결 끊김:", event.code, event.reason);
+    if (!myIp.value && message.ip) {
+      myIp.value = normalizeIp(message.ip);
+    }
 
-      messages.value.push({
-        content: "서버와의 연결이 끊어졌습니다. 재연결을 시도합니다...",
-        timestamp: new Date().toISOString(),
-        isOwn: false,
-      });
+    const incomingIp = normalizeIp(message.ip);
+    const mine = incomingIp === myIp.value;
 
-      setTimeout(connectWebSocket, 3000);
-    };
+    messages.value.push({
+      ...message,
+      ip: message.ip,
+      isOwn: mine,
+    });
 
-    ws.value.onerror = (event) => {
-      console.error("WebSocket 에러:", event);
-    };
-  } catch (error) {
-    console.error("WebSocket 연결 실패:", error);
-  }
+    scrollToBottom();
+  };
+
+  const normalizeIp = (ip: string) => {
+    if (!ip) return "";
+    return ip === "::1" ? "127.0.0.1" : ip;
+  };
+
+  ws.value.onclose = (event) => {
+    isConnected.value = false;
+    console.log("WebSocket 연결 끊김:", event.code, event.reason);
+
+    messages.value.push({
+      content: "서버와의 연결이 끊어졌습니다. 재연결 중...",
+      timestamp: new Date().toISOString(),
+      isOwn: false,
+    });
+
+    setTimeout(connectWebSocket, 3000);
+  };
+
+  ws.value.onerror = (event) => {
+    console.error("WebSocket 에러:", event);
+  };
 };
 
 onMounted(() => {
   connectWebSocket();
-
-  // 이전 메시지 로드
-  fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8080'}/chat`)
-    .then((response) => {
-      if (!response.ok) {
-        throw new Error("서버 응답 오류");
-      }
-      return response.json();
-    })
-    .then((data: Message[]) => {
-      console.log("이전 메시지:", data);
-      messages.value = data.map((msg) => ({
-        ...msg,
-        isOwn: msg.ip === window.location.hostname,
-      }));
-      scrollToBottom();
-    })
-    .catch((error) => {
-      console.error("메시지 로드 실패:", error);
-      messages.value = [];
-    });
 });
 
 onUnmounted(() => {
-  if (ws.value) {
-    ws.value.close();
-  }
+  ws.value?.close();
 });
 </script>
 

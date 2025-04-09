@@ -1,51 +1,37 @@
-name: Deploy to S3
+name: Deploy Frontend
 
 on:
   push:
-    branches:
-      - main
-  workflow_dispatch:
-
-env:
-  AWS_REGION: ap-northeast-2
-  S3_BUCKET: ${{ secrets.S3_BUCKET }}
-  CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
-  API_URL: ${{ secrets.API_URL }}
-  WS_URL: ${{ secrets.WS_URL }}
+    branches: [ master ]
+    paths:
+      - 'frontend/**'
 
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
+      - uses: actions/checkout@v3
+      
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '18'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
+          
+      - name: Install Dependencies
+        run: |
+          cd frontend
+          npm install
+          
       - name: Build
-        run: npm run build
-        env:
-          VITE_API_URL: ${{ env.API_URL }}
-          VITE_WS_URL: ${{ env.WS_URL }}
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
+        run: |
+          cd frontend
+          npm run build
+          
+      - name: Deploy to Vercel
+        uses: amondnet/vercel-action@v20
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Deploy to S3
-        run: |
-          aws s3 sync dist/ s3://${{ env.S3_BUCKET }} --delete
-
-      - name: Invalidate CloudFront cache
-        run: |
-          aws cloudfront create-invalidation --distribution-id ${{ env.CLOUDFRONT_DISTRIBUTION_ID }} --paths "/*" 
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          working-directory: frontend
+          vercel-args: '--prod' 
