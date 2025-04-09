@@ -35,5 +35,9 @@ out/
 ### VS Code ###
 .vscode/
 
+### Environment Variables ###
+.env
+
 ### Application Config ###
+src/main/resources/application-secret.yaml
 src/main/resources/application.yaml
