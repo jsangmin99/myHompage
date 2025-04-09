@@ -1,0 +1,12 @@
+ktor:
+  deployment:
+    port: 8080
+    watch:
+      - classes
+  application:
+    modules:
+      - com.example.ApplicationKt.module
+
+mongo:
+  uri: "mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@${MONGO_HOST}:${MONGO_PORT}/?authSource=admin"
+  db: "chat_db" 
